@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>MTG 3P Life Counter</title>
+  <style>
+    :root {
+      --bg: #090a0f;
+      --card-p1: #1f2937;
+      --card-p2: #1e3a5f;
+      --card-p3: #3b1d28;
+    }
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    body {
+      background: var(--bg);
+      color: #fff;
+      height: 100vh;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .top-half {
+      flex: 1;
+      display: flex;
+      border-bottom: 2px solid rgba(255,255,255,0.1);
+    }
+    .bottom-half {
+      flex: 1;
+      display: flex;
+    }
+    .player {
+      flex: 1;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 12px;
+      touch-action: manipulation;
+    }
+    .player-1 { background: radial-gradient(circle at center, #2b3945, #111827); border-right: 1px solid rgba(255,255,255,0.1); }
+    .player-2 { background: radial-gradient(circle at center, #1b384f, #0f1f2c); border-left: 1px solid rgba(255,255,255,0.1); }
+    .player-3 { background: radial-gradient(circle at center, #472338, #1c0d16); }
+
+    /* Rotations pour jeu autour de la table */
+    .rot-left { transform: rotate(90deg); }
+    .rot-right { transform: rotate(-90deg); }
+
+    .tap-area {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 50%;
+      z-index: 1;
+    }
+    .tap-left { left: 0; }
+    .tap-right { right: 0; }
+
+    .content {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      pointer-events: none;
+    }
+    .name {
+      font-size: 0.95rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      opacity: 0.8;
+      margin-bottom: 2px;
+    }
+    .life {
+      font-size: 5rem;
+      font-weight: 800;
+      line-height: 1;
+      text-shadow: 0 4px 16px rgba(0,0,0,0.6);
+    }
+    .delta {
+      font-size: 1.1rem;
+      font-weight: 700;
+      height: 24px;
+      margin-top: 4px;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+    .delta.visible { opacity: 1; }
+    .delta.plus { color: #4ade80; }
+    .delta.minus { color: #f87171; }
+
+    /* Menu centre */
+    .center-menu {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 10;
+      background: #181920;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 999px;
+      padding: 6px 14px;
+      display: flex;
+      gap: 12px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+    }
+    .center-btn {
+      background: none;
+      border: none;
+      color: #9ca3af;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .center-btn:active { color: #fff; }
+  </style>
+</head>
+<body>
+
+  <div class="top-half">
+    <div class="player player-1" id="p1">
+      <div class="tap-area tap-left" onclick="changeLife(1, -1)"></div>
+      <div class="tap-area tap-right" onclick="changeLife(1, 1)"></div>
+      <div class="content rot-left">
+        <div class="name">Joueur 1</div>
+        <div class="life" id="life-1">40</div>
+        <div class="delta" id="delta-1">+0</div>
+      </div>
+    </div>
+
+    <div class="player player-2" id="p2">
+      <div class="tap-area tap-left" onclick="changeLife(2, -1)"></div>
+      <div class="tap-area tap-right" onclick="changeLife(2, 1)"></div>
+      <div class="content rot-right">
+        <div class="name">Joueur 2</div>
+        <div class="life" id="life-2">40</div>
+        <div class="delta" id="delta-2">+0</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom-half">
+    <div class="player player-3" id="p3">
+      <div class="tap-area tap-left" onclick="changeLife(3, -1)"></div>
+      <div class="tap-area tap-right" onclick="changeLife(3, 1)"></div>
+      <div class="content">
+        <div class="name">Joueur 3</div>
+        <div class="life" id="life-3">40</div>
+        <div class="delta" id="delta-3">+0</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="center-menu">
+    <button class="center-btn" onclick="resetGame(40)">40 PV</button>
+    <button class="center-btn" onclick="resetGame(20)">20 PV</button>
+  </div>
+
+  <script>
+    const lives = { 1: 40, 2: 40, 3: 40 };
+    const deltas = { 1: 0, 2: 0, 3: 0 };
+    const timers = {};
+
+    function changeLife(player, amount) {
+      lives[player] += amount;
+      deltas[player] += amount;
+      document.getElementById(`life-${player}`).textContent = lives[player];
+
+      const dEl = document.getElementById(`delta-${player}`);
+      dEl.textContent = (deltas[player] > 0 ? `+${deltas[player]}` : deltas[player]);
+      dEl.className = `delta visible ${deltas[player] > 0 ? 'plus' : 'minus'}`;
+
+      clearTimeout(timers[player]);
+      timers[player] = setTimeout(() => {
+        deltas[player] = 0;
+        dEl.classList.remove('visible');
+      }, 1200);
+    }
+
+    function resetGame(start) {
+      [1, 2, 3].forEach(p => {
+        lives[p] = start;
+        deltas[p] = 0;
+        document.getElementById(`life-${p}`).textContent = start;
+        document.getElementById(`delta-${p}`).classList.remove('visible');
+      });
+    }
+  </script>
+</body>
+</html>
